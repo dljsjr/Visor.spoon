@@ -1,0 +1,16 @@
+[*.lua]
+indent_style = space
+indent_size = 2
+tab_width = 2
+continuation_indent = 2
+insert_final_newline = true
+align_call_args = true
+align_function_params = true
+align_continuous_assign_statement = true
+align_continuous_rect_table_field = true
+align_continuous_line_space = 2
+align_if_branch = true
+align_array_table = true
+align_continuous_similar_call_args = true
+align_continuous_inline_comment = true
+align_chain_expr = always
