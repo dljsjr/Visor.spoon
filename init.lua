@@ -96,6 +96,9 @@ function M:start()
     log.e("Start called without a configured terminal")
     return
   end
+  if type(self.terminal.init) == "function" then
+    self.terminal:init()
+  end
   local appName = string.match(self.terminal.macApp, "(.+)%.app")
   self.windowFilter = hs.window.filter.new({ [appName] = { allowTitles = self.terminal.windowIdentifier } })
   self.windowFilter.log = filter_logger.hs_install()

@@ -17,6 +17,10 @@ local function _getVisorWindow(self)
   return visorWindow
 end
 
+local function _kitty_ls(self)
+  return hs.execute(string.format([[%s @ --to unix:%s ls]], self.opts.kitten, self.socket))
+end
+
 local function _spawn_kitty_daemon_cmd(self)
   local kittyCmd = ((self.launchCmdLine.nohup and "nohup ") or "") .. self.launchCmdLine.executable
   for _, v in ipairs(self.launchCmdLine.args) do
@@ -50,15 +54,65 @@ local function _cleanup_socket(self)
   end
 end
 
-function kitty:startVisorWindow(display)
+local function _get_daemon_pid(self)
+    -- We don't error on status here because an error
+  -- indicates a failure to lookup the PID which is part of
+  -- what we're trying to figure out (does the PID exist)
   local pid, status = hs.execute(string.format([[pgrep -f %s 2>&1]], self.windowIdentifier))
-  pid = (status and pid) or nil
-  local kittyCmd = (pid and _create_visor_window_cmd(self)) or _spawn_kitty_daemon_cmd(self)
+  return (status and pid) or nil
+end
+
+local function _get_opacity(self)
+  local pid = _get_daemon_pid(self)
   if not pid then
     _cleanup_socket(self)
+    return
   end
+
+  local visorWindow = _getVisorWindow(self)
+  if not visorWindow then
+    return
+  end
+
+  local kitty_json, status, err_type, ret_code = _kitty_ls(self)
+  if not status then
+    error(string.format("Error querying kitty window details: %s %s", err_type, ret_code))
+  end
+
+  return hs.json.decode(kitty_json)[1].background_opacity
+end
+
+local function _set_opacity(self)
+  local kittenCmd = string.format(
+    "%s @ --to unix:%s set-background-opacity --all %s 2>&1",
+    self.opts.kitten,
+    self.socket,
+    self.opts.opacity
+  )
+  log.v("Setting opacity with: " .. kittenCmd)
+  local out, success, exit_type, ret_code = hs.execute(kittenCmd)
+  if not success then
+    log.w(string.format(
+      [[
+      Problem setting opacity using kitten: %s %s
+      output: %s
+    ]], exit_type, ret_code, out
+    ))
+  else
+    kitty.currentOpacity = self.opts.opacity
+  end
+end
+
+function kitty:startVisorWindow(display)
+  local pid = _get_daemon_pid(self)
+  local kittyCmd = (pid and _create_visor_window_cmd(self)) or _spawn_kitty_daemon_cmd(self)
   log.v("Starting kitty window with command" .. kittyCmd)
-  os.execute(kittyCmd)
+
+  local status, err_type, ret_code = os.execute(kittyCmd)
+  if not status then
+    error(string.format("Error creating visor window: %s %s", err_type, ret_code), 2)
+  end
+
   local visorWindow = nil
   repeat
     visorWindow = _getVisorWindow(self)
@@ -81,24 +135,7 @@ end
 
 function kitty:showVisorWindow(visorWindow, display)
   if self.opts.opacity ~= self.currentOpacity then
-    local kittenCmd = string.format(
-      "%s @ --to unix:%s set-background-opacity --all %s 2>&1",
-      self.opts.kitten,
-      self.socket,
-      self.opts.opacity
-    )
-    log.v("Setting opacity with: " .. kittenCmd)
-    local out, success, exit_type, ret_code = hs.execute(kittenCmd)
-    if not success then
-      log.w(string.format(
-        [[
-        Problem setting opacity using kitten: %s %s
-        output: %s
-      ]], exit_type, ret_code, out
-      ))
-    else
-      kitty.currentOpacity = self.opts.opacity
-    end
+    _set_opacity(self)
   end
   local screenFrame = display:fullFrame()
   local windowFrame = visorWindow:frame()
@@ -118,6 +155,25 @@ function kitty:getTerminalAppAndVisor(maybeVisorWindow)
   local visorWindow = maybeVisorWindow or _getVisorWindow(self)
   local termApp = (visorWindow and visorWindow:application())
   return termApp, visorWindow
+end
+
+function kitty:init()
+  local pid = _get_daemon_pid(self)
+  if not pid then
+    _cleanup_socket(self)
+    return
+  end
+
+  local visorWindow = _getVisorWindow(self)
+  if not visorWindow then
+    return
+  end
+
+  kitty.currentOpacity = _get_opacity(self)
+
+  if self.opts.opacity ~= kitty.currentOpacity then
+    _set_opacity(self)
+  end
 end
 
 kitty.__index = kitty
