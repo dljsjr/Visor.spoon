@@ -34,7 +34,7 @@ local function _getVisorWindow(self, kitty_pid)
     log.df("Term app found: %s", hs.inspect(termApp))
     visorWindow = termApp and termApp:getWindow(self.windowIdentifier)
     if visorWindow then
-      log.d("Found visor window. App name:" .. termApp:name() .. ", bundleId: " .. termApp:bundleID())
+      log.d("Found visor window. App name:" .. tostring(termApp:name()) .. ", bundleId: " .. tostring(termApp:bundleID()))
     end
   else
     log.w("No Kitty app instance while trying to find existing visor window.")
@@ -222,7 +222,13 @@ function kitty:hideVisorWindow(visorWindow)
 end
 
 function kitty:showVisorWindow(visorWindow, display)
-  local screenFrame = display:fullFrame()
+  local focusedWindow = hs.window.focusedWindow()
+  local screenFrame
+  if focusedWindow and focusedWindow:isFullScreen() then
+    screenFrame = display:fullFrame()
+  else
+    screenFrame = display:frame()
+  end
   visorWindow:move(
     hs.geometry {
       x = screenFrame.x,

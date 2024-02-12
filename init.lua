@@ -167,12 +167,12 @@ function M:configureForKitty(opts)
 
   local kittyTemplate = kitty.fromTemplate {
     macApp = "kitty.app",
-    bundleId = "net.kovidgoyal.kitty",
+    bundleId = "net.doug.kitty",
     windowIdentifier = windowIdentifier,
     executableName = "kitty",
     profilePath = profilePath,
     launchCmdLine = {
-      executable = "kitty",
+      executable = "$HOME/.local/bin/kitty",
       nohup = true,
       background = true,
       args = {
@@ -204,7 +204,7 @@ function M:toggleTerminal()
 
   local termApp, visorWindow = self.terminal:getTerminalAppAndVisor()
   local display = _get_display(self)
-  if termApp == nil or termApp:bundleID() ~= self.terminal.bundleId then
+  if termApp == nil then
     log.v("termApp" ..
       self.terminal.macApp .. "for bundleId" .. self.terminal.bundleId .. " not running, starting visor window")
     self.terminal:startVisorWindow(display):focus()
