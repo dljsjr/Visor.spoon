@@ -1,2 +1,4 @@
 .luarc.json
 kitty/socket
+kitty/kitty_daemon.out
+kitty/kitty_daemon.err
