@@ -62,7 +62,7 @@ end
 
 local function _create_visor_window_cmd(self)
   return string.format(
-    [[%s @ --to unix:%s launch --dont-take-focus --no-response 2>&1]],
+    [[%s @ --to unix:%s launch --no-response 2>&1]],
     self.opts.kitten,
     self.socket,
     self.windowIdentifier,
@@ -105,14 +105,13 @@ local function _get_opacity(self)
   return hs.json.decode(kitty_json)[1].background_opacity
 end
 
-local function _set_opacity(self)
+local function _set_opacity(self, desired_opacity)
   local kittenCmd = string.format(
     "%s @ --to unix:%s set-background-opacity --all %s 2>&1",
     self.opts.kitten,
     self.socket,
-    self.opts.opacity
+    desired_opacity
   )
-  log.v("Setting opacity with: " .. kittenCmd)
   local out, success, exit_type, ret_code = hs.execute(kittenCmd)
   if not success then
     log.w(string.format(
@@ -122,7 +121,7 @@ local function _set_opacity(self)
     ]], exit_type, ret_code, out
     ))
   else
-    kitty.currentOpacity = self.opts.opacity
+    kitty.currentOpacity = desired_opacity
   end
 end
 
@@ -201,6 +200,10 @@ function kitty:startVisorWindow(display)
     if not visorWindow then _launch_visor_window(self) end
   until visorWindow ~= nil
 
+  local screenFrame = display:fullFrame()
+  local currentSize = visorWindow:size()
+  visorWindow:setFrame({ x = screenFrame.x, y = screenFrame.y, w = currentSize.w, h = currentSize.h }, 0)
+
   kitty.currentOpacity = _get_opacity(self)
 
   local appPID = pid or (visorWindow and visorWindow:application():pid()) or nil
@@ -216,8 +219,40 @@ function kitty:startVisorWindow(display)
   return self:showVisorWindow(visorWindow, display)
 end
 
-function kitty:hideVisorWindow(visorWindow)
-  visorWindow:application():hide()
+function kitty:isShowing(visorWindow)
+  local win = visorWindow or _getVisorWindow(self)
+  return win and win:isVisible() and win:frame().h > 1
+end
+
+function kitty:hideVisorWindow(visorWindow, display)
+  local focusTarget = hs.window.orderedWindows()[1] or hs.window.desktop()
+  local screenFrame = display:fullFrame()
+  -- First we shrink the window verticall as much as the app and the OS
+  -- will allow. This is also the part that's animated.
+  visorWindow:setFrame(
+    hs.geometry {
+      x = screenFrame.x,
+      y = screenFrame.y,
+      w = screenFrame.w,
+      h = 0
+    },
+    self.opts.animationDuration
+  )
+  -- I don't completely understand the `...WithWorkarounds` function's explanation,
+  -- but I do know that using it lets us create a window with an "illegal" size and position.
+  -- So we use this to move the window offscreen and make it tiny.
+  hs.timer.doAfter(self.opts.animationDuration, function()
+    visorWindow:setFrameWithWorkarounds(
+      hs.geometry {
+        x = screenFrame.x,
+        y = screenFrame.y - 24,
+        w = screenFrame.w,
+        h = -1
+      },
+      0
+    )
+    focusTarget:focus()
+  end)
   return visorWindow
 end
 
@@ -237,12 +272,11 @@ function kitty:showVisorWindow(visorWindow, display)
       h = screenFrame.h *
         self.opts.height
     },
-    0
+    self.opts.animationDuration
   )
   if self.opts.opacity ~= self.currentOpacity then
-    _set_opacity(self)
+    _set_opacity(self, self.opts.opacity)
   end
-  visorWindow:application():unhide()
   visorWindow:focus()
   return visorWindow
 end
@@ -253,8 +287,22 @@ function kitty:getTerminalAppAndVisor(maybeVisorWindow)
   return termApp, visorWindow
 end
 
-function kitty:init()
+function kitty:init(display)
   _cleanup_logs()
+  local args = self.launchCmdLine.args
+  local width = display:fullFrame().w
+  -- we use these "-o" overrides no matter what other args are in the
+  -- command line table. This is so that we can exert some control over
+  -- the terminal startup flicker.
+  self.launchCmdLine.args = {
+    "-o",
+    "background_opacity=0",
+    "-o",
+    "initial_window_height=1",
+    "-o",
+    string.format("initial_window_width=%s", math.floor(width)),
+    table.unpack(args)
+  }
   local pid = _get_daemon_pid(self)
   log.df("PID in kitty:init(): %s", tostring(pid))
   if not pid then
@@ -267,11 +315,7 @@ function kitty:init()
     return
   end
 
-  kitty.currentOpacity = _get_opacity(self)
-
-  if self.opts.opacity ~= kitty.currentOpacity then
-    _set_opacity(self)
-  end
+  _set_opacity(self, self.opts.opacity)
 end
 
 kitty.__index = kitty

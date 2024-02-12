@@ -26,7 +26,8 @@ local M = {
 
 local defaultOpts = {
   opacity = 1.0,
-  height = 0.4
+  height = 0.4,
+  animationDuration = 0.2
 }
 
 defaultOpts.__index = defaultOpts
@@ -97,20 +98,30 @@ function M:start()
     return nil
   end
   if type(self.terminal.init) == "function" then
-    self.terminal:init()
+    self.terminal:init(_get_display(self))
   end
   local appName = string.match(self.terminal.macApp, "(.+)%.app")
   self.windowFilter = hs.window.filter.new({ [appName] = { allowTitles = self.terminal.windowIdentifier } })
   self.windowFilter.log = filter_logger.hs_install()
   self.windowFilter.log.setLogLevel(log.getLogLevel())
+
   self.windowFilter = self.windowFilter:subscribe(
     {
       [hs.window.filter.windowUnfocused] = function(window, app_name, event)
-        log.v("Window unfocused callback")
-        if window then
-          self.terminal:hideVisorWindow(window)
+        log.vf("Receievd windowUnfocused event for %s", app_name)
+        -- An idiosyncracy in Hammerspoon + macOS means that regular Kitty GUI windows
+        -- will trigger this event as if it happened on the visor window, even
+        -- passing a reference to the visor window in to the callback here.
+        local focusedWindow = hs.window.focusedWindow()
+        if focusedWindow and focusedWindow:title() == self.terminal.windowIdentifier then
+          return
         end
-      end
+        self.terminal:hideVisorWindow(window, _get_display(self))
+      end,
+      [hs.window.filter.windowFocused] = function(window, app_name, event)
+        log.vf("Receievd windowUnfocused event for %s", app_name)
+        log.df("Window that took focus: %s",            hs.inspect(hs.window.focusedWindow()))
+      end,
     }
   )
   log.v("Initialized window filter " .. inspect(self.windowFilter, { depth = 1 }))
@@ -196,7 +207,7 @@ end
 
 ---Primary `action` for the Spoon. Hides or reveals the terminal window.
 function M:toggleTerminal()
-  log.v("Toggle terminal called")
+  log.d("Toggle terminal action triggered")
   if type(self.terminal) ~= "table" then
     log.e("Terminal toggle binding triggered with no terminal configured")
     return
@@ -207,21 +218,22 @@ function M:toggleTerminal()
   if termApp == nil then
     log.v("termApp" ..
       self.terminal.macApp .. "for bundleId" .. self.terminal.bundleId .. " not running, starting visor window")
-    self.terminal:startVisorWindow(display):focus()
+    self.terminal:startVisorWindow(display)
     return
   end
   if visorWindow == nil then
     log.v("Visor window with identifier " .. self.terminal.windowIdentifier .. " not open, creating visor window")
-    self.terminal:startVisorWindow(display):focus()
+    self.terminal:startVisorWindow(display)
     return
   end
-  if visorWindow:isVisible() then
+
+  if self.terminal:isShowing(visorWindow) then
     if not visorWindow:application():isFrontmost() then
       log.v("Visor window visible but not focused, focusing")
       visorWindow:focus()
     else
       log.v("Hiding visor window")
-      self.terminal:hideVisorWindow(visorWindow)
+      self.terminal:hideVisorWindow(visorWindow, display)
     end
   else
     log.v("Showing visor window")
