@@ -59,7 +59,7 @@ end
 
 ---Hammerspoon Init lifecycle function.
 ---Initializes defaults for fields.
----@return Visor.spoon
+---@return Visor
 function M:init()
   log.v("Init from Visor.spoon!")
   self.display = M.DisplayOptions.ActiveDisplay
@@ -89,12 +89,12 @@ end
 ---@see Visor.bindHotKeys
 ---@see Visor.configure
 ---@see Visor.configureForKitty
----@return Visor self returns self on method call
+---@return Visor? self returns self on method call
 function M:start()
   log.v("Start called")
   if self.terminal == nil then
     log.e("Start called without a configured terminal")
-    return
+    return nil
   end
   if type(self.terminal.init) == "function" then
     self.terminal:init()
@@ -105,14 +105,6 @@ function M:start()
   self.windowFilter.log.setLogLevel(log.getLogLevel())
   self.windowFilter = self.windowFilter:subscribe(
     {
-      [hs.window.filter.windowCreated] = function(window, app_name, event)
-        log.v("Window created callback")
-        self.visorWindow = window
-      end,
-      [hs.window.filter.windowDestroyed] = function(window, app_name, event)
-        log.v("Window destroyed callback")
-        self.visorWindow = nil
-      end,
       [hs.window.filter.windowUnfocused] = function(window, app_name, event)
         log.v("Window unfocused callback")
         if window then
@@ -123,7 +115,6 @@ function M:start()
   )
   log.v("Initialized window filter " .. inspect(self.windowFilter, { depth = 1 }))
   local _termApp, visorWindow = self.terminal:getTerminalAppAndVisor()
-  self.visorWindow = visorWindow
   if visorWindow then
     log.v("Visor window already existed at Spoon start")
   end
@@ -192,12 +183,11 @@ function M:configureForKitty(opts)
         windowIdentifier,
         "-T",
         windowIdentifier,
-        "-o",
-        "allow_remote_control=yes",
         "--listen-on",
         "unix:" .. kitty.socket,
         "-c",
-        profilePath
+        profilePath,
+        "false"
       }
     }
   }
@@ -217,12 +207,12 @@ function M:toggleTerminal()
   if termApp == nil or termApp:bundleID() ~= self.terminal.bundleId then
     log.v("termApp" ..
       self.terminal.macApp .. "for bundleId" .. self.terminal.bundleId .. " not running, starting visor window")
-    self.terminal:startVisorWindow(display)
+    self.terminal:startVisorWindow(display):focus()
     return
   end
   if visorWindow == nil then
     log.v("Visor window with identifier " .. self.terminal.windowIdentifier .. " not open, creating visor window")
-    self.terminal:startVisorWindow(display)
+    self.terminal:startVisorWindow(display):focus()
     return
   end
   if visorWindow:isVisible() then
