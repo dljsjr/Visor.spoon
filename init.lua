@@ -16,12 +16,14 @@ filter_logger.level = 'debug'
 
 ---A Hammerspoon Spoon for providing a visor or "quake"/"guake"/"yakuake" style
 ---drop-down terminal for Kitty, similar to iTerm2's Hotkey Window profile.
----@class Visor
+---@class Visor: Spoon
+---@field public terminal Terminal?
 local M = {
   name = "Visor",
   version = "1.0",
   author = "Doug Stephen <dljs.jr@dougstephenjr.com>",
-  license = "MIT - https://opensource.org/licenses/MIT"
+  license = "MIT - https://opensource.org/licenses/MIT",
+  homepage = "https://github.com/dljsjr/Visor.spoon"
 }
 
 local defaultOpts = {
@@ -102,6 +104,8 @@ function M:start()
   end
   local appName = string.match(self.terminal.macApp, "(.+)%.app")
   self.windowFilter = hs.window.filter.new({ [appName] = { allowTitles = self.terminal.windowIdentifier } })
+
+---@diagnostic disable-next-line: inject-field
   self.windowFilter.log = filter_logger.hs_install()
   self.windowFilter.log.setLogLevel(log.getLogLevel())
 
@@ -180,8 +184,6 @@ function M:configureForKitty(opts)
     macApp = "kitty.app",
     bundleId = "net.doug.kitty",
     windowIdentifier = windowIdentifier,
-    executableName = "kitty",
-    profilePath = profilePath,
     launchCmdLine = {
       executable = "$HOME/.local/bin/kitty",
       nohup = true,
@@ -228,7 +230,8 @@ function M:toggleTerminal()
   end
 
   if self.terminal:isShowing(visorWindow) then
-    if not visorWindow:application():isFrontmost() then
+    local app = visorWindow:application()
+    if app and not app:isFrontmost() then
       log.v("Visor window visible but not focused, focusing")
       visorWindow:focus()
     else

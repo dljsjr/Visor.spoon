@@ -1,5 +1,7 @@
 local kittyVisorDir = hs.spoons.scriptPath()
 
+---@class KittyTerminal: Terminal
+---@field package opts table
 local kitty = {
   socket = kittyVisorDir .. "socket",
   daemon_stdout = kittyVisorDir .. "kitty_daemon.out",
@@ -194,11 +196,11 @@ function kitty:startVisorWindow(display)
     return
   end
 
-  repeat
+  while visorWindow == nil do
     log.df("Passing PID to visor window: %s", pid)
     visorWindow = _getVisorWindow(self, pid)
     if not visorWindow then _launch_visor_window(self) end
-  until visorWindow ~= nil
+  end
 
   local screenFrame = display:fullFrame()
   local currentSize = visorWindow:size()
@@ -206,7 +208,8 @@ function kitty:startVisorWindow(display)
 
   kitty.currentOpacity = _get_opacity(self)
 
-  local appPID = pid or (visorWindow and visorWindow:application():pid()) or nil
+  local app =  visorWindow and visorWindow:application() or nil
+  local appPID = pid or (app and app:pid()) or nil
   if not appPID then
     error("Failed to get kitty app PID for attaching watcher")
   end
