@@ -219,12 +219,14 @@ function M:toggleTerminal()
   local display = _get_display(self)
   if termApp == nil then
     log.v("termApp" ..
-      self.terminal.macApp .. "for bundleId" .. self.terminal.bundleId .. " not running, starting visor window")
+      tostring(self.terminal.macApp) ..
+      "for bundleId" .. tostring(self.terminal.bundleId) .. " not running, starting visor window")
     self.terminal:startVisorWindow(display)
     return
   end
   if visorWindow == nil then
-    log.v("Visor window with identifier " .. self.terminal.windowIdentifier .. " not open, creating visor window")
+    log.v("Visor window with identifier " ..
+      tostring(self.terminal.windowIdentifier) .. " not open, creating visor window")
     self.terminal:startVisorWindow(display)
     return
   end

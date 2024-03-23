@@ -8,6 +8,15 @@ local kitty = {
   daemon_stderr = kittyVisorDir .. "kitty_daemon.err",
 }
 
+local function _get_screen_frame(display)
+  local focusedWindow = hs.window.focusedWindow()
+  if focusedWindow and focusedWindow:isFullScreen() then
+    return display:fullFrame()
+  else
+    return display:frame()
+  end
+end
+
 local function _cleanup_logs()
   local ret_code, delete_err = os.remove(kitty.daemon_stdout)
   if not ret_code then
@@ -202,7 +211,7 @@ function kitty:startVisorWindow(display)
     if not visorWindow then _launch_visor_window(self) end
   end
 
-  local screenFrame = display:fullFrame()
+  local screenFrame = _get_screen_frame(display)
   local currentSize = visorWindow:size()
   visorWindow:setFrame({ x = screenFrame.x, y = screenFrame.y, w = currentSize.w, h = currentSize.h }, 0)
 
@@ -229,7 +238,7 @@ end
 
 function kitty:hideVisorWindow(visorWindow, display)
   local focusTarget = hs.window.orderedWindows()[1] or hs.window.desktop()
-  local screenFrame = display:fullFrame()
+  local screenFrame = _get_screen_frame(display)
   -- First we shrink the window verticall as much as the app and the OS
   -- will allow. This is also the part that's animated.
   visorWindow:setFrame(
@@ -254,20 +263,16 @@ function kitty:hideVisorWindow(visorWindow, display)
       },
       0
     )
+    visorWindow:application():hide()
     focusTarget:focus()
   end)
   return visorWindow
 end
 
 function kitty:showVisorWindow(visorWindow, display)
-  local focusedWindow = hs.window.focusedWindow()
-  local screenFrame
-  if focusedWindow and focusedWindow:isFullScreen() then
-    screenFrame = display:fullFrame()
-  else
-    screenFrame = display:frame()
-  end
-  visorWindow:move(
+  local screenFrame = _get_screen_frame(display)
+  visorWindow:application():unhide()
+  visorWindow:setFrame(
     hs.geometry {
       x = screenFrame.x,
       y = screenFrame.y,
@@ -293,19 +298,26 @@ end
 function kitty:init(display)
   _cleanup_logs()
   local args = self.launchCmdLine.args
-  local width = display:fullFrame().w
+  local width = _get_screen_frame(display).w
   -- we use these "-o" overrides no matter what other args are in the
   -- command line table. This is so that we can exert some control over
   -- the terminal startup flicker.
-  self.launchCmdLine.args = {
+  local new_args = {
     "-o",
     "background_opacity=0",
     "-o",
     "initial_window_height=1",
     "-o",
     string.format("initial_window_width=%s", math.floor(width)),
-    table.unpack(args)
   }
+  if self.opts.always_on_top == false then
+    table.insert(new_args, "-o")
+    table.insert(new_args, "always_on_top=no")
+  end
+  for _, arg in ipairs(args) do
+    table.insert(new_args, arg)
+  end
+  self.launchCmdLine.args = new_args
   local pid = _get_daemon_pid(self)
   log.df("PID in kitty:init(): %s", tostring(pid))
   if not pid then
